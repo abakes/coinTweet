@@ -1,0 +1,27 @@
+---
+environment: "%REQUIRED%"
+aws:
+  template:
+    base_name: 'NLP Scored Tweets'
+  kinesis:
+    base_name: 'nlp-scored-tweets'
+    shard_count: 1
+  firehose:
+    base_name: 'nlp-scored-tweets-firehose'
+    s3:
+      bucket: "%REQUIRED%"
+  dynamo:
+    table_name: "%REQUIRED%"
+  lambda_persist:
+    base_name: 'historical-averager-persist'
+    s3:
+      bucket: 'cointweet-code'
+      key: 'CoinTweet/Lambda'
+      filename: 'historical-averager.zip'
+  lambda_live:
+    base_name: 'live-data-watcher'
+    batch_size: 50
+    s3:
+      bucket: 'cointweet-code'
+      key: 'CoinTweet/Lambda'
+      filename: 'live-data.zip'

@@ -1,0 +1,34 @@
+{
+  "name": "historical-averager",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "main": "src/app.js",
+  "scripts": {
+    "check": "jscs src",
+    "lint": "jshint src",
+    "verify": "npm run lint -s && npm run check -s",
+    "test": "npm run verify"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "chai": "3.5.0",
+    "sinon": "1.17.3",
+    "sinon-stub-promise": "1.1.0",
+    "simple-mock": "0.7.0"
+  },
+  "dependencies": {
+    "aws-sdk": "2.181.0",
+    "q": "1.4.1",
+    "lodash": "4.15.0",
+    "moment": "2.13.0",
+    "moment-timezone": "0.5.5",
+    "twit": "*"
+  },
+  "readme": "README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abakes/coinTweet.git"
+  }
+}

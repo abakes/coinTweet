@@ -1,0 +1,26 @@
+apply plugin: com.cointweet.gradle.s3filepublisher.S3FilePublisherPlugin
+apply plugin: 'com.moowork.node'
+apply plugin: 'maven'
+
+node {
+    download = false
+    npmCommand = 'yarn'
+}
+
+task prod_npm_install(type: NpmTask) {
+    args = ['install', '--production']
+}
+
+task srcZip(type: Zip, dependsOn: [ prod_npm_install ]) {
+    baseName 'stream-producer'
+    from ('.') {
+        include 'node_modules/**'
+        include 'package.json'
+    }
+    from 'src'
+}
+
+assemble.dependsOn(srcZip)
+tasks.publishFilesToS3.dependsOn(srcZip)
+tasks.npm_test.dependsOn('npm_install')
+//tasks.check.dependdsadsOn(npm_test)
