@@ -1,0 +1,288 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "<%= context[:aws][:template][:base_name] %> (Env: '<%= context[:environment] %>')",
+    "Resources": {
+
+        "ScoredTweetStream": {
+            "Type": "AWS::Kinesis::Stream",
+            "Properties": {
+                "Name": "<%= context[:aws][:kinesis][:base_name] %>-<%= context[:environment] %>",
+                "ShardCount": <%= context[:aws][:kinesis][:shard_count] %>,
+                "Tags": [
+                    { "Key": "Creator", "Value": "<%= runtime[:whoami] %>" },
+                    { "Key": "Environment", "Value": "<%= context[:environment] %>" }
+                ]
+            }
+        },
+
+        "ScoredTweetFirehose": {
+            "Type": "AWS::KinesisFirehose::DeliveryStream",
+                "Properties": {
+                "DeliveryStreamName": "<%= context[:aws][:firehose][:base_name] %>-<%= context[:environment] %>",
+                "DeliveryStreamType": "KinesisStreamAsSource",
+                "KinesisStreamSourceConfiguration": {
+                    "KinesisStreamARN": { "Fn::GetAtt": ["ScoredTweetStream", "Arn"] },
+                    "RoleARN": { "Fn::GetAtt": ["ScoredTweetFirehoseRole", "Arn"]}
+                },
+                "S3DestinationConfiguration": {
+                    "BucketARN": "arn:aws:s3:::<%= context[:aws][:firehose][:s3][:bucket] %>",
+                    "BufferingHints": {
+                        "IntervalInSeconds": 300,
+                        "SizeInMBs": 50
+                    },
+                    "CloudWatchLoggingOptions": {
+                        "Enabled": false
+                    },
+                    "CompressionFormat": "UNCOMPRESSED",
+                    "EncryptionConfiguration": {
+                        "NoEncryptionConfig": "NoEncryption"
+                    },
+                    "Prefix": "/",
+                    "RoleARN": { "Fn::GetAtt" : ["ScoredTweetFirehoseRole", "Arn"] }
+                }
+            }
+        },
+
+        "ScoredTweetFirehoseRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": { "Service": [ "firehose.amazonaws.com" ] },
+                        "Action": [ "sts:AssumeRole" ]
+                    }]
+                },
+                "Path": "/",
+                "Policies": [{
+                    "PolicyName": "root",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:AbortMultipartUpload",
+                                    "s3:GetBucketLocation",
+                                    "s3:GetObject",
+                                    "s3:ListBucket",
+                                    "s3:ListBucketMultipartUploads",
+                                    "s3:PutObject"
+                                ],
+                                "Resource": [
+                                    "arn:aws:s3:::<%= context[:aws][:firehose][:s3][:bucket] %>",
+                                    "arn:aws:s3:::<%= context[:aws][:firehose][:s3][:bucket] %>/*"
+                                ]
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "kinesis:DescribeStream",
+                                    "kinesis:GetRecords",
+                                    "kinesis:GetShardIterator"
+                                ],
+                                "Resource": { "Fn::GetAtt": ["ScoredTweetStream", "Arn"] }
+                            }
+                        ]
+                    }
+                }]
+            }
+        },
+
+        "HistoricalAveragerPersistLambda": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "S3Bucket": "<%= context[:aws][:lambda_persist][:s3][:bucket] %>",
+                    "S3Key": "<%= context[:aws][:lambda_persist][:s3][:key] %>/<%= runtime[:git][:branch] %>/<%= context[:aws][:lambda_persist][:s3][:filename] %>"
+                },
+                "Role": { "Fn::GetAtt": ["HistoricalAveragerPersistLambdaExecutionRole", "Arn"] },
+                "Environment": {
+                    "Variables": {
+                        "DYNAMO_TABLE_NAME": "<%= context[:aws][:dynamo][:table_name] %>",
+                    }
+                },
+                "FunctionName": "<%= context[:aws][:lambda_persist][:base_name] %>-<%= context[:environment] %>",
+                "Description": "Reads the 5 minute files from firehose, averages it, and puts it to dynamo. (<%= runtime[:git][:branch] %>)",
+                "Timeout": 60,
+                "Handler": "index.handler",
+                "Runtime": "nodejs6.10",
+                "MemorySize": 128,
+                "Tags": [
+                    { "Key": "Creator", "Value": "<%= runtime[:whoami] %>" },
+                    { "Key": "Environment", "Value": "<%= context[:environment] %>" }
+                ]
+            }
+        },
+
+        "HistoricalAveragerPersistLambdaExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": { "Service": ["lambda.amazonaws.com"] },
+                        "Action": ["sts:AssumeRole"]
+                    }]
+                },
+                "Path": "/",
+                "Policies": [{
+                    "PolicyName": "root",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents"
+                                ],
+                                "Resource": "*"
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject"
+                                ],
+                                "Resource": "arn:aws:s3:::<%= context[:aws][:firehose][:s3][:bucket] %>/*"
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:PutItem",
+                                    "dynamodb:BatchWriteItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:Scan",
+                                    "dynamodb:GetRecords",
+                                    "dynamodb:GetShardIterator",
+                                    "dynamodb:DescribeStream",
+                                    "dynamodb:ListStreams"
+                                ],
+                                "Resource": {
+                                    "Fn::Join": ["", ["arn:aws:dynamodb:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":table/<%= context[:aws][:dynamo][:table_name] %>"]]
+                                }
+                            }
+                        ]
+                    }
+                }]
+            }
+        },
+
+        "HistoricalAveragerPersistLambdaAlias": {
+            "Type": "AWS::Lambda::Alias",
+            "Properties": {
+                "FunctionName": { "Ref": "HistoricalAveragerPersistLambda" },
+                "FunctionVersion": "$LATEST",
+                "Name": "<%= runtime[:git][:branch] %>"
+            }
+        },
+
+        "LiveDataWatcherLambda": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "S3Bucket": "<%= context[:aws][:lambda_live][:s3][:bucket] %>",
+                    "S3Key": "<%= context[:aws][:lambda_live][:s3][:key] %>/<%= runtime[:git][:branch] %>/<%= context[:aws][:lambda_live][:s3][:filename] %>"
+                },
+                "Role": { "Fn::GetAtt" : ["LiveDataWatcherLambdaRole", "Arn"] },
+                "Environment": {
+                    "Variables": {
+                        "DYNAMO_TABLE_NAME": "<%= context[:aws][:dynamo][:table_name] %>"
+                    }
+                },
+                "FunctionName": "<%= context[:aws][:lambda_live][:base_name] %>-<%= context[:environment] %>",
+                "Description": "watches data live and compares to the past hour (<%= runtime[:git][:branch] %>)",
+                "Timeout": 60,
+                "Handler": "index.handler",
+                "Runtime": "nodejs6.10",
+                "MemorySize": 128,
+                "Tags": [
+                    { "Key": "Creator", "Value": "<%= runtime[:whoami] %>" },
+                    { "Key": "Environment", "Value": "<%= context[:environment] %>" }
+                ]
+            }
+        },
+
+        "LiveDataWatcherLambdaRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": { "Service": [ "lambda.amazonaws.com" ] },
+                        "Action": [ "sts:AssumeRole" ]
+                    }]
+                },
+                "Path": "/",
+                "Policies": [{
+                    "PolicyName": "root",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents",
+                                    "ec2:CreateNetworkInterface",
+                                    "ec2:DescribeNetworkInterfaces",
+                                    "ec2:DeleteNetworkInterface"
+                                ],
+                                "Resource": "*"
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "kinesis:DescribeStream",
+                                    "kinesis:GetRecords",
+                                    "kinesis:GetShardIterator"
+                                ],
+                                "Resource": { "Fn::GetAtt": ["ScoredTweetStream", "Arn"] }
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:Query",
+                                    "dynamodb:Scan",
+                                    "dynamodb:GetRecords",
+                                    "dynamodb:GetShardIterator",
+                                    "dynamodb:DescribeStream",
+                                    "dynamodb:ListStreams"
+                                ],
+                                "Resource": {
+                                    "Fn::Join": ["", ["arn:aws:dynamodb:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":table/<%= context[:aws][:dynamo][:table_name] %>"]]
+                                }
+                            }
+                        ]
+                    }
+                }]
+            }
+        },
+
+        "LiveDataWatcherLambdaAlias": {
+            "Type": "AWS::Lambda::Alias",
+            "Properties": {
+                "FunctionName": { "Ref": "LiveDataWatcherLambda" },
+                "FunctionVersion": "$LATEST",
+                "Name": "<%= runtime[:git][:branch] %>"
+            }
+        },
+
+        "LiveDataWatcherLambdaEventSource": {
+            "Type" : "AWS::Lambda::EventSourceMapping",
+            "Properties": {
+                "BatchSize" : <%= context[:aws][:lambda_live][:batch_size] %>,
+                "Enabled" : true,
+                "EventSourceArn" : { "Fn::GetAtt": ["ScoredTweetStream", "Arn"] },
+                "FunctionName" : { "Fn::GetAtt": ["LiveDataWatcherLambda", "Arn"] },
+                "StartingPosition" : "LATEST"
+            }
+        }
+
+    }
+}

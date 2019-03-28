@@ -1,0 +1,12 @@
+---
+extend: base
+environment: production
+aws:
+  kinesis:
+    base_name: 'nlp-scored-tweets'
+    shard_count: 1
+  firehose:
+    s3:
+      bucket: 'nlp-scored-tweets-production'
+  dynamo:
+    table_name: 'historical-average-score-production'

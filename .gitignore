@@ -1,0 +1,51 @@
+# IDEA Project Files
+*.iml
+.idea
+
+# Swap files
+.*.swp
+*~
+
+# Gradle Temporary Files
+.gradle/
+build/
+classes/
+bin/
+
+# Git merge files
+*.orig
+
+# Node
+caches
+node_modules
+
+# npm cache
+npm_cache
+caches
+
+**/testJs/test-results/*
+
+jshint-results.xml
+
+# Generated files
+**/generated
+
+# Mac specific files
+.DS_Store
+PhantomJS_1.9.8_(Mac_OS_X_0.0.0)
+
+*.sublime-project
+*.sublime-workspace
+
+root project *
+
+checkstyle-result.xml
+
+# Compressed Files
+*.zip
+
+# Log files
+*.log
+
+# Credentials
+twitter-credentials.js
